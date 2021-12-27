@@ -26,7 +26,7 @@ func main() {
 
 	pathAgent, err := exec.LookPath("odriveagent")
 	if err != nil {
-		log.Fatal("Counldn't find [odriveagent] executable in path.")
+		log.Fatal("Counldn't find [odriveagent] executable in PATH environment variable.\nPlease add it in order to continue.")
 	} else {
 		odriveAgentPath = pathAgent
 	}
@@ -52,8 +52,8 @@ func main() {
 
 func generateMenu() {
 	systray.SetTemplateIcon(icon.Data, icon.Data)
-	systray.SetTitle("Awesome App")
-	systray.SetTooltip("Lantern")
+	systray.SetTitle("Odrive manager")
+	systray.SetTooltip("Odrive manager")
 	startOdrive := systray.AddMenuItem("Start odrive agent", "Start odrive agent")
 	stopOdrive := systray.AddMenuItem("Stop odrive agent", "Stop odrive agent")
 	stopOdrive.Hide()

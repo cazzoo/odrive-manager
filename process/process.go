@@ -3,53 +3,46 @@ package process
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
-	"syscall"
+	"strings"
 
 	ps "github.com/mitchellh/go-ps"
 )
 
-func Process() {
-	ps, _ := ps.Processes()
-	fmt.Println(ps[0].Executable())
-
-	for pp := range ps {
-		fmt.Printf("%d %s\n", ps[pp].Pid(), ps[pp].Executable())
-	}
+type Process struct {
+	Pid  int
+	Name string
 }
 
 // FindProcess( key string ) ( int, string, error )
-func FindProcess(key string) (int, string, error) {
-	pname := ""
-	pid := 0
+func FindProcess(key string) ([]Process, error) {
 	err := errors.New("not found")
 	ps, _ := ps.Processes()
+	var processes []Process
 
-	for i, _ := range ps {
-		if ps[i].Executable() == key {
-			pid = ps[i].Pid()
-			pname = ps[i].Executable()
+	for i := range ps {
+		if strings.Contains(ps[i].Executable(), key) {
+			processes = append(processes, Process{ps[i].Pid(), ps[i].Executable()})
 			err = nil
-			break
 		}
 	}
-	return pid, pname, err
+	return processes, err
 }
 
-func StartDetachedProcess(executable string) {
-	err := syscall.Exec(executable, []string{}, os.Environ())
-	if err != nil {
-		log.Printf("Failed to start process %s: %s", executable, err)
+func KillProcesses(procs []Process) error {
+	var killError error
+	for _, proc := range procs {
+		if p, _ := GetProcess(proc.Pid); p.Pid != 0 {
+			if err := p.Signal(os.Kill); err != nil {
+				fmt.Printf("Unable to kill process [%s]: %s", proc.Name, err)
+				killError = err
+				return err
+			}
+		}
 	}
+	return killError
 }
 
-func TerminateProcess(pid int, optional_signal ...syscall.Signal) {
-	signal := syscall.SIGTERM
-	if len(optional_signal) > 0 {
-		signal = optional_signal[0]
-	}
-	if err := syscall.Kill(pid, signal); err != nil {
-		log.Fatal("Failed to kill process: ", err)
-	}
+func GetProcess(pid int) (*os.Process, error) {
+	return os.FindProcess(pid)
 }

@@ -3,15 +3,20 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
+	"os/exec"
 	"time"
 
+	"cazzoo.me/godrive/godrive"
 	"cazzoo.me/godrive/process"
 	"github.com/getlantern/systray"
 	"github.com/getlantern/systray/example/icon"
 	"github.com/skratchdot/open-golang/open"
 )
 
-var odriveagentPid int
+var odriveAgentPath string
+var odriveHandler godrive.IOdriveAgentHandler
+var menuItems map[string]*systray.MenuItem
 
 func main() {
 	onExit := func() {
@@ -19,45 +24,90 @@ func main() {
 		ioutil.WriteFile(fmt.Sprintf(`on_exit_%d.txt`, now.UnixNano()), []byte(now.String()), 0644)
 	}
 
-	if pid, s, err := process.FindProcess("odriveagent"); err == nil {
-		fmt.Printf("Pid:%d, Pname:%s\n", pid, s)
-		odriveagentPid = pid
-		systray.Run(onReady, onExit)
+	pathAgent, err := exec.LookPath("odriveagent")
+	if err != nil {
+		log.Fatal("Counldn't find [odriveagent] executable in path.")
 	} else {
-		fmt.Println("No process found for [odriveagent]. Please ensure it is started.")
+		odriveAgentPath = pathAgent
+	}
+
+	odriveHandler = godrive.OdriveAgentHandler(odriveAgentPath)
+
+	// Restarting the agent if already started
+	if processes, err := process.FindProcess("odriveagent"); err == nil {
+		fmt.Print("Process seemed to be started before, trying to restart it.")
+		if err := process.KillProcesses(processes); err != nil {
+			fmt.Printf("Error stoping agent.")
+		} else {
+			if err := odriveHandler.Start(); err != nil {
+				fmt.Printf("Unable to start [odriveagent]: %s", err)
+			}
+		}
+	}
+
+	menuItems = make(map[string]*systray.MenuItem)
+
+	systray.Run(generateMenu, onExit)
+}
+
+func generateMenu() {
+	systray.SetTemplateIcon(icon.Data, icon.Data)
+	systray.SetTitle("Awesome App")
+	systray.SetTooltip("Lantern")
+	startOdrive := systray.AddMenuItem("Start odrive agent", "Start odrive agent")
+	stopOdrive := systray.AddMenuItem("Stop odrive agent", "Stop odrive agent")
+	stopOdrive.Hide()
+	if _, err := process.FindProcess("odriveagent"); err == nil {
+		startOdrive.Hide()
+		stopOdrive.Show()
+	} else {
+		startOdrive.Show()
+		stopOdrive.Hide()
+	}
+	menuItems["startOdrive"] = startOdrive
+	menuItems["stopOdrive"] = stopOdrive
+	go func() {
+		for {
+			select {
+			case <-startOdrive.ClickedCh:
+				startAgent(odriveHandler)
+			case <-stopOdrive.ClickedCh:
+				stopAgent(odriveHandler)
+			}
+		}
+	}()
+	onReady()
+}
+
+func startAgent(odriveHandler godrive.IOdriveAgentHandler) {
+	if err := odriveHandler.Start(); err != nil {
+		fmt.Printf("Unable to start [odriveagent]: %s", err)
+	} else {
+		menuItems["startOdrive"].Hide()
+		menuItems["stopOdrive"].Show()
+	}
+}
+
+func stopAgent(odriveHandler godrive.IOdriveAgentHandler) {
+	if err := odriveHandler.Stop(); err != nil {
+		fmt.Printf("Unable to stop [odriveagent]: %s", err)
+	} else {
+		menuItems["startOdrive"].Show()
+		menuItems["stopOdrive"].Hide()
 	}
 }
 
 func onReady() {
-	systray.SetTemplateIcon(icon.Data, icon.Data)
-	systray.SetTitle("Awesome App")
-	systray.SetTooltip("Lantern")
 	mQuitOrig := systray.AddMenuItem("Quit", "Quit the whole app")
 	go func() {
 		<-mQuitOrig.ClickedCh
 		fmt.Println("Requesting quit")
-		process.TerminateProcess(odriveagentPid)
 		systray.Quit()
 		fmt.Println("Finished quitting")
 	}()
 
 	// We can manipulate the systray in other goroutines
 	go func() {
-		if odriveagentPid == 0 {
-			startOdrive := systray.AddMenuItem("Start odrive agent", "Start odrive agent")
-			go func() {
-				<-<-startOdrive.ClickedCh
-				fmt.Println("Requesting quit")
-				process.TerminateProcess(odriveagentPid)
-				systray.Quit()
-				fmt.Println("Finished quitting")
-			}()
-
-		}
-
-		systray.SetTemplateIcon(icon.Data, icon.Data)
-		systray.SetTitle("Awesome App")
-		systray.SetTooltip("Pretty awesome")
 		mChange := systray.AddMenuItem("Change Me", "Change Me")
 		mChecked := systray.AddMenuItemCheckbox("Unchecked", "Check Me", true)
 		mEnabled := systray.AddMenuItem("Enabled", "Enabled")

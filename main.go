@@ -9,14 +9,16 @@ import (
 
 	"cazzoo.me/godrive/godrive"
 	"cazzoo.me/godrive/process"
+	"github.com/andlabs/ui"
 	"github.com/getlantern/systray"
 	"github.com/getlantern/systray/example/icon"
 	"github.com/skratchdot/open-golang/open"
 )
 
 var odriveAgentPath string
-var odriveHandler godrive.IOdriveAgentHandler
+var odriveAgentHandler godrive.IOdriveAgentHandler
 var menuItems map[string]*systray.MenuItem
+var schedulerChan chan struct{}
 
 func main() {
 	onExit := func() {
@@ -31,7 +33,7 @@ func main() {
 		odriveAgentPath = pathAgent
 	}
 
-	odriveHandler = godrive.OdriveAgentHandler(odriveAgentPath)
+	odriveAgentHandler = godrive.OdriveAgentHandler(odriveAgentPath)
 
 	// Restarting the agent if already started
 	if processes, err := process.FindProcess("odriveagent"); err == nil {
@@ -39,7 +41,7 @@ func main() {
 		if err := process.KillProcesses(processes); err != nil {
 			fmt.Printf("Error stoping agent.")
 		} else {
-			if err := odriveHandler.Start(); err != nil {
+			if err := odriveAgentHandler.Start(); err != nil {
 				fmt.Printf("Unable to start [odriveagent]: %s", err)
 			}
 		}
@@ -50,12 +52,34 @@ func main() {
 	systray.Run(generateMenu, onExit)
 }
 
+func startScheduledChecks() {
+	tickIndex := 0
+	schedulerChan = make(chan struct{})
+	ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				tickIndex++
+				fmt.Printf("odrive agent status started %t", odriveAgentHandler.HealthCheck())
+				fmt.Printf("Ticking for the %d time\n", tickIndex)
+			case <-schedulerChan:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+}
+
 func generateMenu() {
+	startScheduledChecks()
 	systray.SetTemplateIcon(icon.Data, icon.Data)
 	systray.SetTitle("Odrive manager")
 	systray.SetTooltip("Odrive manager")
 	startOdrive := systray.AddMenuItem("Start odrive agent", "Start odrive agent")
 	stopOdrive := systray.AddMenuItem("Stop odrive agent", "Stop odrive agent")
+	stopChan := systray.AddMenuItem("Stop chan", "Stop chan")
+	displayWindow := systray.AddMenuItem("Show window", "Show window")
 	stopOdrive.Hide()
 	if _, err := process.FindProcess("odriveagent"); err == nil {
 		startOdrive.Hide()
@@ -70,17 +94,21 @@ func generateMenu() {
 		for {
 			select {
 			case <-startOdrive.ClickedCh:
-				startAgent(odriveHandler)
+				startAgent(odriveAgentHandler)
 			case <-stopOdrive.ClickedCh:
-				stopAgent(odriveHandler)
+				stopAgent(odriveAgentHandler)
+			case <-displayWindow.ClickedCh:
+				ui.Main(setupUI)
+			case <-stopChan.ClickedCh:
+				close(schedulerChan)
 			}
 		}
 	}()
 	onReady()
 }
 
-func startAgent(odriveHandler godrive.IOdriveAgentHandler) {
-	if err := odriveHandler.Start(); err != nil {
+func startAgent(odriveAgentHandler godrive.IOdriveAgentHandler) {
+	if err := odriveAgentHandler.Start(); err != nil {
 		fmt.Printf("Unable to start [odriveagent]: %s", err)
 	} else {
 		menuItems["startOdrive"].Hide()
@@ -88,8 +116,8 @@ func startAgent(odriveHandler godrive.IOdriveAgentHandler) {
 	}
 }
 
-func stopAgent(odriveHandler godrive.IOdriveAgentHandler) {
-	if err := odriveHandler.Stop(); err != nil {
+func stopAgent(odriveAgentHandler godrive.IOdriveAgentHandler) {
+	if err := odriveAgentHandler.Stop(); err != nil {
 		fmt.Printf("Unable to stop [odriveagent]: %s", err)
 	} else {
 		menuItems["startOdrive"].Show()
@@ -176,4 +204,79 @@ func onReady() {
 			}
 		}
 	}()
+}
+
+func setupUI() {
+	mainWindow := ui.NewWindow("libui Updating UI", 640, 480, true)
+	mainWindow.OnClosing(func(*ui.Window) bool {
+		ui.Quit()
+		return true
+	})
+	ui.OnShouldQuit(func() bool {
+		mainWindow.Destroy()
+		return true
+	})
+
+	vbContainer := ui.NewVerticalBox()
+	vbContainer.SetPadded(true)
+
+	inputGroup := ui.NewGroup("Input")
+	inputGroup.SetMargined(true)
+
+	vbInput := ui.NewVerticalBox()
+	vbInput.SetPadded(true)
+
+	inputForm := ui.NewForm()
+	inputForm.SetPadded(true)
+
+	message := ui.NewEntry()
+	message.SetText("Hello World")
+	inputForm.Append("What message do you want to show?", message, false)
+
+	showMessageButton := ui.NewButton("Show message")
+	clearMessageButton := ui.NewButton("Clear message")
+
+	vbInput.Append(inputForm, false)
+	vbInput.Append(showMessageButton, false)
+	vbInput.Append(clearMessageButton, false)
+
+	inputGroup.SetChild(vbInput)
+
+	messageGroup := ui.NewGroup("Message")
+	messageGroup.SetMargined(true)
+
+	vbMessage := ui.NewVerticalBox()
+	vbMessage.SetPadded(true)
+
+	messageLabel := ui.NewLabel("")
+
+	vbMessage.Append(messageLabel, false)
+
+	messageGroup.SetChild(vbMessage)
+
+	countGroup := ui.NewGroup("Counter")
+	countGroup.SetMargined(true)
+
+	vbCounter := ui.NewVerticalBox()
+	vbCounter.SetPadded(true)
+
+	countGroup.SetChild(vbCounter)
+
+	vbContainer.Append(inputGroup, false)
+	vbContainer.Append(messageGroup, false)
+	vbContainer.Append(countGroup, false)
+
+	mainWindow.SetChild(vbContainer)
+
+	showMessageButton.OnClicked(func(*ui.Button) {
+		// Update the UI directly as it is called from the main thread
+		messageLabel.SetText(message.Text())
+	})
+
+	clearMessageButton.OnClicked(func(*ui.Button) {
+		// Update the UI directly as it is called from the main thread
+		messageLabel.SetText("")
+	})
+
+	mainWindow.Show()
 }

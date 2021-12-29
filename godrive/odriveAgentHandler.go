@@ -10,6 +10,7 @@ import (
 type IOdriveAgentHandler interface {
 	Start() error
 	Stop() error
+	HealthCheck() bool
 	KillProcess() error
 }
 
@@ -47,8 +48,12 @@ func (agent *odriveAgentHandler) Stop() error {
 	return err
 }
 
-func KillProcesses(processes []process.Process) {
-	panic("unimplemented")
+func (agent *odriveAgentHandler) HealthCheck() bool {
+	var pid = 0
+	if agent.cmd != nil && agent.cmd.Process != nil {
+		pid = agent.cmd.Process.Pid
+	}
+	return pid != 0
 }
 
 func (agent *odriveAgentHandler) KillProcess() error {

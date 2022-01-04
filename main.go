@@ -16,7 +16,9 @@ import (
 )
 
 var odriveAgentPath string
+var odriveClientPath string
 var odriveAgentHandler godrive.IOdriveAgentHandler
+var odriveClientHandler godrive.IOdriveClientHandler
 var menuItems map[string]*systray.MenuItem
 var schedulerChan chan struct{}
 
@@ -33,7 +35,15 @@ func main() {
 		odriveAgentPath = pathAgent
 	}
 
+	pathClient, err := exec.LookPath("odrive")
+	if err != nil {
+		log.Fatal("Counldn't find [odrive] executable in PATH environment variable.\nPlease add it in order to continue.")
+	} else {
+		odriveClientPath = pathClient
+	}
+
 	odriveAgentHandler = godrive.OdriveAgentHandler(odriveAgentPath)
+	odriveClientHandler = godrive.OdriveClientHandler(odriveClientPath)
 
 	// Restarting the agent if already started
 	if processes, err := process.FindProcess("odriveagent"); err == nil {
@@ -61,7 +71,7 @@ func startScheduledChecks() {
 			select {
 			case <-ticker.C:
 				tickIndex++
-				fmt.Printf("odrive agent status started %t", odriveAgentHandler.HealthCheck())
+				fmt.Printf("odrive agent status started: %t\n", odriveAgentHandler.HealthCheck())
 				fmt.Printf("Ticking for the %d time\n", tickIndex)
 			case <-schedulerChan:
 				ticker.Stop()
@@ -235,10 +245,12 @@ func setupUI() {
 
 	showMessageButton := ui.NewButton("Show message")
 	clearMessageButton := ui.NewButton("Clear message")
+	showOdriveStatusButton := ui.NewButton("Get Odrive status")
 
 	vbInput.Append(inputForm, false)
 	vbInput.Append(showMessageButton, false)
 	vbInput.Append(clearMessageButton, false)
+	vbInput.Append(showOdriveStatusButton, false)
 
 	inputGroup.SetChild(vbInput)
 
@@ -262,9 +274,21 @@ func setupUI() {
 
 	countGroup.SetChild(vbCounter)
 
+	odriveGroup := ui.NewGroup("odrive command result")
+	odriveGroup.SetMargined(true)
+
+	vbOdrive := ui.NewVerticalBox()
+	vbOdrive.SetPadded(true)
+
+	odriveLabel := ui.NewLabel("")
+	vbOdrive.Append(odriveLabel, false)
+
+	odriveGroup.SetChild(vbOdrive)
+
 	vbContainer.Append(inputGroup, false)
 	vbContainer.Append(messageGroup, false)
 	vbContainer.Append(countGroup, false)
+	vbContainer.Append(odriveGroup, false)
 
 	mainWindow.SetChild(vbContainer)
 
@@ -276,6 +300,15 @@ func setupUI() {
 	clearMessageButton.OnClicked(func(*ui.Button) {
 		// Update the UI directly as it is called from the main thread
 		messageLabel.SetText("")
+	})
+
+	showOdriveStatusButton.OnClicked(func(*ui.Button) {
+		err, output := odriveClientHandler.Call(godrive.Status)
+		if err == nil {
+			messageLabel.SetText(string(output))
+		} else {
+			fmt.Printf("ERROR: %s", err)
+		}
 	})
 
 	mainWindow.Show()

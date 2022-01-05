@@ -303,12 +303,8 @@ func setupUI() {
 	})
 
 	showOdriveStatusButton.OnClicked(func(*ui.Button) {
-		err, output := odriveClientHandler.Call(godrive.Status)
-		if err == nil {
-			messageLabel.SetText(string(output))
-		} else {
-			fmt.Printf("ERROR: %s", err)
-		}
+		output := odriveClientHandler.Call(godrive.Status)
+		messageLabel.SetText(string(output))
 	})
 
 	mainWindow.Show()

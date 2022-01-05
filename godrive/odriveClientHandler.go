@@ -1,6 +1,7 @@
 package godrive
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 
@@ -42,7 +43,7 @@ const (
 )
 
 type IOdriveClientHandler interface {
-	Call(command OdriveCommand) (error, []byte)
+	Call(command OdriveCommand) []byte
 }
 
 func OdriveClientHandler(path string) IOdriveClientHandler {
@@ -52,15 +53,14 @@ func OdriveClientHandler(path string) IOdriveClientHandler {
 	return client
 }
 
-func (client *odriveClientHandler) Call(command OdriveCommand) (error, []byte) {
+func (client *odriveClientHandler) Call(command OdriveCommand) []byte {
 	client.cmd = exec.Command(client.path, strings.ToLower(command.String()))
-	output, _ := client.cmd.CombinedOutput()
-	err := client.cmd.Run()
+	client.cmd.Env = os.Environ()
+	output, err := client.cmd.CombinedOutput()
 
 	if err != nil {
-		log.WithError(err).Error("Error with the agent process")
-		log.Error(string(output))
+		log.WithError(err).Error("Error with the client process")
 	}
 
-	return err, output
+	return output
 }

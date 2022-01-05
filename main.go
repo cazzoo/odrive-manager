@@ -59,6 +59,7 @@ func main() {
 
 	menuItems = make(map[string]*systray.MenuItem)
 
+	startScheduledChecks()
 	systray.Run(generateMenu, onExit)
 }
 
@@ -82,7 +83,6 @@ func startScheduledChecks() {
 }
 
 func generateMenu() {
-	startScheduledChecks()
 	systray.SetTemplateIcon(icon.Data, icon.Data)
 	systray.SetTitle("Odrive manager")
 	systray.SetTooltip("Odrive manager")
@@ -108,7 +108,9 @@ func generateMenu() {
 			case <-stopOdrive.ClickedCh:
 				stopAgent(odriveAgentHandler)
 			case <-displayWindow.ClickedCh:
-				ui.Main(setupUI)
+				go func() {
+					ui.Main(setupUI)
+				}()
 			case <-stopChan.ClickedCh:
 				close(schedulerChan)
 			}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+	<head>
+		<title>GOdrive</title>
+		<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+		body { height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #f1c40f; font-family: 'Helvetika Neue', Arial, sans-serif; font-size: 28px; }
+		.odrive-container { display: flex; flex-direction: column; align-items: center; }
+		.result { height: 80vh; overflow: auto; padding: 10px; border: 1px dotted black; color: #252423; font-size: 1.2rem; }
+		.btn-row { display: flex; align-items: center; margin: 1rem; }
+		.btn { cursor: pointer; min-width: 2em; padding: 1em; border-radius: 5px; text-align: center; margin: 0 1rem; box-shadow: 0 6px #8b5e00; color: white; background-color: #E4B702; position: relative; font-weight: bold; }
+		.btn:hover { box-shadow: 0 4px #8b5e00; top: 2px; }
+		.btn:active{ box-shadow: 0 1px #8b5e00; top: 5px; }
+		</style>
+	</head>
+	<body onload=start()>
+		<!-- UI layout -->
+		<div class="odrive-container">
+			<div class="btn-row">
+				<div class="btn get-status">Show status</div>
+				<div class="btn get-status">Show status</div>
+			</div>
+            <div class="result">This is a placeholder text nah!<br/>
+			You get it<br/>
+			You get it<br/>
+			You get it<br/>
+			You get it<br/>
+			You get it<br/>
+			You get it<br/>
+			You get it<br/>
+			You get it<br/>
+			</div>
+		</div>
+
+		<!-- Connect UI actions to Go functions -->
+		<script>
+			const result = document.querySelector('.result');
+			const btnStatus = document.querySelector('.get-status');
+
+			// We use async/await because Go functions are asynchronous
+			const render = async () => {
+				result.innerText = `${await window.displayResult()}`;
+			};
+
+			btnStatus.addEventListener('click', async () => {
+				await odriveStatus(); // Call Go function
+				render();
+			});
+
+			render();
+		</script>
+	</body>
+</html>

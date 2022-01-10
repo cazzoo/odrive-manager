@@ -1,18 +1,24 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
+	"os"
 	"os/exec"
+	"os/signal"
+	"sync"
 	"time"
 
 	"cazzoo.me/godrive/godrive"
 	"cazzoo.me/godrive/process"
-	"github.com/andlabs/ui"
 	"github.com/getlantern/systray"
 	"github.com/getlantern/systray/example/icon"
 	"github.com/skratchdot/open-golang/open"
+	"github.com/zserge/lorca"
 )
 
 var odriveAgentPath string
@@ -21,6 +27,9 @@ var odriveAgentHandler godrive.IOdriveAgentHandler
 var odriveClientHandler godrive.IOdriveClientHandler
 var menuItems map[string]*systray.MenuItem
 var schedulerChan chan struct{}
+
+//go:embed www
+var fs embed.FS
 
 func main() {
 	onExit := func() {
@@ -109,7 +118,7 @@ func generateMenu() {
 				stopAgent(odriveAgentHandler)
 			case <-displayWindow.ClickedCh:
 				go func() {
-					ui.Main(setupUI)
+					setupUI()
 				}()
 			case <-stopChan.ClickedCh:
 				close(schedulerChan)
@@ -218,96 +227,51 @@ func onReady() {
 	}()
 }
 
+type odriveCommand struct {
+	sync.Mutex
+	status []byte
+}
+
+func (s *odriveCommand) getStatus() {
+	s.Lock()
+	defer s.Unlock()
+	s.status = odriveClientHandler.Call(godrive.Status)
+}
+
+func (s *odriveCommand) displayResult() string {
+	s.Lock()
+	defer s.Unlock()
+	return string(s.status)
+}
+
 func setupUI() {
-	mainWindow := ui.NewWindow("libui Updating UI", 640, 480, true)
-	mainWindow.OnClosing(func(*ui.Window) bool {
-		ui.Quit()
-		return true
-	})
-	ui.OnShouldQuit(func() bool {
-		mainWindow.Destroy()
-		return true
+
+	ui, _ := lorca.New("", "", 480, 320)
+	defer ui.Close()
+
+	ui.Bind("start", func() {
+		log.Println("UI is ready")
 	})
 
-	vbContainer := ui.NewVerticalBox()
-	vbContainer.SetPadded(true)
+	s := &odriveCommand{}
+	ui.Bind("odriveStatus", s.getStatus)
+	ui.Bind("displayResult", s.displayResult)
 
-	inputGroup := ui.NewGroup("Input")
-	inputGroup.SetMargined(true)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ln.Close()
+	go http.Serve(ln, http.FileServer(http.FS(fs)))
+	ui.Load(fmt.Sprintf("http://%s/www", ln.Addr()))
 
-	vbInput := ui.NewVerticalBox()
-	vbInput.SetPadded(true)
+	// Wait until the interrupt signal arrives or browser window is closed
+	sigc := make(chan os.Signal)
+	signal.Notify(sigc, os.Interrupt)
+	select {
+	case <-sigc:
+	case <-ui.Done():
+	}
 
-	inputForm := ui.NewForm()
-	inputForm.SetPadded(true)
-
-	message := ui.NewEntry()
-	message.SetText("Hello World")
-	inputForm.Append("What message do you want to show?", message, false)
-
-	showMessageButton := ui.NewButton("Show message")
-	clearMessageButton := ui.NewButton("Clear message")
-	showOdriveStatusButton := ui.NewButton("Get Odrive status")
-
-	vbInput.Append(inputForm, false)
-	vbInput.Append(showMessageButton, false)
-	vbInput.Append(clearMessageButton, false)
-	vbInput.Append(showOdriveStatusButton, false)
-
-	inputGroup.SetChild(vbInput)
-
-	messageGroup := ui.NewGroup("Message")
-	messageGroup.SetMargined(true)
-
-	vbMessage := ui.NewVerticalBox()
-	vbMessage.SetPadded(true)
-
-	messageLabel := ui.NewLabel("")
-
-	vbMessage.Append(messageLabel, false)
-
-	messageGroup.SetChild(vbMessage)
-
-	countGroup := ui.NewGroup("Counter")
-	countGroup.SetMargined(true)
-
-	vbCounter := ui.NewVerticalBox()
-	vbCounter.SetPadded(true)
-
-	countGroup.SetChild(vbCounter)
-
-	odriveGroup := ui.NewGroup("odrive command result")
-	odriveGroup.SetMargined(true)
-
-	vbOdrive := ui.NewVerticalBox()
-	vbOdrive.SetPadded(true)
-
-	odriveLabel := ui.NewLabel("")
-	vbOdrive.Append(odriveLabel, false)
-
-	odriveGroup.SetChild(vbOdrive)
-
-	vbContainer.Append(inputGroup, false)
-	vbContainer.Append(messageGroup, false)
-	vbContainer.Append(countGroup, false)
-	vbContainer.Append(odriveGroup, false)
-
-	mainWindow.SetChild(vbContainer)
-
-	showMessageButton.OnClicked(func(*ui.Button) {
-		// Update the UI directly as it is called from the main thread
-		messageLabel.SetText(message.Text())
-	})
-
-	clearMessageButton.OnClicked(func(*ui.Button) {
-		// Update the UI directly as it is called from the main thread
-		messageLabel.SetText("")
-	})
-
-	showOdriveStatusButton.OnClicked(func(*ui.Button) {
-		output := odriveClientHandler.Call(godrive.Status)
-		messageLabel.SetText(string(output))
-	})
-
-	mainWindow.Show()
+	log.Println("exiting...")
 }

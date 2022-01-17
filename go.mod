@@ -8,5 +8,6 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
-	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
+	github.com/spf13/viper v1.10.1
+	golang.org/x/sys v0.0.0-20220111092808-5a964db01320 // indirect
 )

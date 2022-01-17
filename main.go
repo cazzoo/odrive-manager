@@ -10,6 +10,7 @@ import (
 	"cazzoo.me/godrive/godrive"
 	"cazzoo.me/godrive/process"
 	"github.com/andlabs/ui"
+	_ "github.com/andlabs/ui/winmanifest"
 	"github.com/getlantern/systray"
 	"github.com/getlantern/systray/example/icon"
 	"github.com/skratchdot/open-golang/open"
@@ -109,7 +110,8 @@ func generateMenu() {
 				stopAgent(odriveAgentHandler)
 			case <-displayWindow.ClickedCh:
 				go func() {
-					ui.Main(setupUI)
+					settingsWindow := godrive.SettingWindow(odriveClientHandler)
+					ui.Main(settingsWindow)
 				}()
 			case <-stopChan.ClickedCh:
 				close(schedulerChan)

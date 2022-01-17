@@ -1,0 +1,5 @@
+autounsyncthreshold = "Never"
+mountpaths = []
+placeholdersize = "Never"
+splitsize = "Small"
+trashclean = "Never"
